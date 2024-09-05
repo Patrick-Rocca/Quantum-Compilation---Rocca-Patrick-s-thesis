@@ -610,7 +610,7 @@ class CircuitOperations:
         self._Hd = None
         self._Hi = None
         
-    def simulate(self,circuit_state,Td=1,Nd=4,Ti=1,Ni=4,get_comp_time=False,prob_treshold=None):
+    def compile(self,circuit_state,Td=1.5,Nd=4,Ti=2e3,Ni=4,thesis_sim=False,prob_treshold=None):
         if self._Hd is None or self._Hi is None: raise Exception("Hamiltonians not loaded.")
         if not circuit_state.is_classical(): raise Exception("Input state not classical.")
         
@@ -630,12 +630,12 @@ class CircuitOperations:
         
         p0 = np.abs([state[i_start] for state in evolution_d])**2
         
-        if not get_comp_time:
+        if thesis_sim:
             return (evolution_d,evolution_i,population_d,population_i,p0)
         else:
-            return (evolution_d,evolution_i,population_d,population_i,p0,end_time-start_time)
+            return CircuitState(circuit_state._shape, state=evolution_i[-1])
         
-    def final_simulation(self, circuit_state, dt_d, dt_i, Td_max, Ti_max, N_list, d_list,DATA,start_directory="./", dir=None, verbose=False):
+    def thesis_simulation(self, circuit_state, dt_d, dt_i, Td_max, Ti_max, N_list, d_list,DATA,start_directory="./", dir=None, verbose=False):
         if not circuit_state.is_classical(): raise Exception("Input state not classical.")
         
         comp_times_loadH = []
@@ -701,7 +701,7 @@ class CircuitOperations:
                 Ti = (best[2]+1)*dt_i
                 if verbose: print(f"\n({time.strftime('%Hh%Mm%Ss')}) Starting simulation with best parameters (Td={Td}s,Ti={Ti}s) ...")
                 N_best = 20
-                evolution_d,evolution_i,population_d,population_i,p0, comp_time = self.simulate(CircuitState(circuit_state._shape, state = start_state), (best[1]+1)*dt_d, N_best, (best[2]+1)*dt_i, N_best, get_comp_time=True, prob_treshold=prob_treshold)
+                evolution_d,evolution_i,population_d,population_i,p0, comp_time = self.compile(CircuitState(circuit_state._shape, state = start_state), (best[1]+1)*dt_d, N_best, (best[2]+1)*dt_i, N_best, thesis_sim=True, prob_treshold=prob_treshold)
                 if verbose: print(f"({time.strftime('%Hh%Mm%Ss')}) Simulation over.\n")
                 comp_times_sims[-1].append(comp_time)
                 
@@ -775,6 +775,7 @@ class FileWriter:
             writer.writerow(d_list)
             writer.writerow(infidelities)
 
+
 class Plotter:
     def plot_evolution(dt_d,dt_i,Nd,Ni,infidelities_d,infidelities_i,dev_stds_d, dev_stds_i,p0, population):
         t_d = [dt_d*i for i in range(Nd)] 
@@ -784,8 +785,13 @@ class Plotter:
         fig = plt.figure(figsize=(12, 5))
         gs = gridspec.GridSpec(2, 4, height_ratios=[6, 2], width_ratios=[1,1,1,1])
         
-        # fig.suptitle("State evolution")
-        plt.rcParams.update({'font.size': 12})
+        plt.rcParams['font.family'] = 'serif' 
+        plt.rcParams['font.serif'] = ['Times New Roman'] 
+        plt.rcParams['mathtext.fontset'] = 'custom'  
+        plt.rcParams['mathtext.rm'] = 'Times New Roman'  
+        plt.rcParams['mathtext.it'] = 'Times New Roman:italic'  
+        plt.rcParams['mathtext.bf'] = 'Times New Roman:bold' 
+        plt.rcParams['font.size'] = 14
 
         ax1 = plt.subplot(gs[0,:2])
         ax2 = plt.subplot(gs[0,2:])
@@ -802,7 +808,7 @@ class Plotter:
         y_max = max(infidelities_d+infidelities_i)+max(dev_stds_d+dev_stds_i)
         
         ax1.errorbar(t_d, infidelities_d, yerr=dev_stds_d, fmt='o', capsize=3, color=(0, 0, 179/255))
-        ax1.set_xlabel(r't [s]')
+        ax1.set_xlabel(r't [1/J]')
         ax1.set_ylabel(r'Infidelity')
         ax1.set_title(r'Driving evolution')
         ax1.set_xlim(x_min_d, x_max_d)
@@ -810,7 +816,7 @@ class Plotter:
         ax1.grid(True)
         
         ax2.errorbar(t_i, infidelities_i, yerr=dev_stds_i, fmt='o',color=(230/255, 46/255, 0),capsize=5)
-        ax2.set_xlabel(r't [s]')
+        ax2.set_xlabel(r't [1/J]')
         ax2.set_ylabel(r'Infidelity')
         ax2.set_title(r'Imaginary evolution')
         ax2.set_xlim(x_min_i, x_max_i)
@@ -818,60 +824,73 @@ class Plotter:
         ax2.grid(True)
 
         ax3.plot(t_d, p0,'o',color=(0, 0, 179/255), markersize=3)
-        # ax3.axhline(y=1/np.sqrt(population[-1]), color='black', linestyle='--', linewidth=0.8)
         ax3.set_title(r'$p_{0}$')
-        ax3.set_xlabel(r't [s]')
+        ax3.set_xlabel(r't [1/J]')
         ax3.set_yticks([0.25*i for i in range(5)])
         ax3.set_xlim(x_min_d,x_max_d)
-        #ax3.set_yticklabels([i if int(i.get_text())%2==0 else '' for i in ax2.get_yticklabels()])
         ax3.grid(True)
         
         ax4.plot(t_d, population[:Nd],'o',color=(0, 0, 179/255), markersize=3)
         ax4.set_title(r'Population (driving)')
-        ax4.set_xlabel(r't [s]')
+        ax4.set_xlabel(r't [1/J]')
         ax4.set_yticks([0.2*i for i in range(6)])
         ax4.set_yticks(range(0,28000,7000))
         ax4.set_xlim(x_min_d,x_max_d)
-        #ax3.set_yticklabels([i if int(i.get_text())%2==0 else '' for i in ax2.get_yticklabels()])
         ax4.grid(True)
         
         ax5.plot(t_i, population[Nd:],'o',color=(230/255, 46/255, 0), markersize=3)
         ax5.set_title(r'Population (imaginary)')
-        ax5.set_xlabel(r't [s]')
+        ax5.set_xlabel(r't [1/J]')
         ax5.set_yticks(range(0,max(population)+2, max([int(max(population)/5),2])))
         ax5.set_yticks(range(0,28000,7000))
         ax5.set_xlim(x_min_d,x_max_i)
-        # ax5.set_yticklabels([i if int(i.get_text())%2==0 else '' for i in ax5.get_yticklabels()])
         ax5.grid(True)
-
+        
+        xfmt = ticker.ScalarFormatter()
+        xfmt.set_powerlimits((-2,1))  
+        ax1.xaxis.set_major_formatter(xfmt)
+        ax2.xaxis.set_major_formatter(xfmt)
+        ax3.xaxis.set_major_formatter(xfmt)
+        ax4.xaxis.set_major_formatter(xfmt)
+        ax5.xaxis.set_major_formatter(xfmt)
+        
         plt.tight_layout()
         plt.show()
+        
         return fig
-    def plot_infidelities_heatmap(infidelities,Td_max,Ti_max,dt_d,dt_i,i_max,j_max):
+    def plot_infidelities_heatmap(infidelities,Td_max,Ti_max,dt_d,dt_i,i_max,j_max,N,d):
         Nd = int(Td_max/dt_d)
         Ni = int(Ti_max/dt_i) 
         
         max_inf = 0.012
+        
+        plt.rcParams['font.family'] = 'serif'  
+        plt.rcParams['font.serif'] = ['Times New Roman'] 
+        plt.rcParams['mathtext.fontset'] = 'custom'  
+        plt.rcParams['mathtext.rm'] = 'Times New Roman' 
+        plt.rcParams['mathtext.it'] = 'Times New Roman:italic' 
+        plt.rcParams['mathtext.bf'] = 'Times New Roman:bold' 
+        plt.rcParams['font.size'] = 13
     
         plt.imshow(np.transpose(infidelities), cmap='viridis', interpolation='nearest',origin='lower', vmin = 0.0, vmax=max_inf)
 
-        plt.xlabel(r'$T_{D}$')
-        plt.ylabel(r'$T_{I}$')
-        plt.title(r'$m=4, d_{max}=3$')
+        plt.xlabel(r'$T_{D}$ [1/J]')
+        plt.ylabel(r'$T_{I}$ [1/J]')
+        plt.title(r'$m$ = '+str(N)+', $d_{max}$ = ' +str(d))
+        
 
-        plt.xticks(ticks=range(Nd),labels=["{:.2f}".format((i+1)*dt_d*1.055) for i in range(Nd)])
-        plt.yticks(ticks=range(Ni),labels=["{:.2f}".format((i+1)*dt_i*1.055e-3) for i in range(Ni)])
+        plt.xticks(ticks=range(Nd),labels=["{:.2f}".format((i+1)*dt_d) for i in range(Nd)])
+        plt.yticks(ticks=range(Ni),labels=["{:.2f}".format((i+1)*dt_i*1e-3) for i in range(Ni)])
 
-        # plt.gca().set_ylabel('1e-31', labelpad=5, rotation=0, ha='right')  # labelpad regola la distanza
-        # plt.gca().yaxis.set_label_coords(-0.02, 0.998)  # Sposta la label a sinistra e sopra l'immagine
-        plt.gca().text(0, 1.03, '1e-31', ha='center', va='center', rotation=0, transform= plt.gca().transAxes, fontsize=10)
-        plt.gca().text(1.04, -0.055,  '1e-34', ha='center', va='center', rotation=0, transform= plt.gca().transAxes, fontsize=10)
+        plt.gca().text(0, 1.03, '1e3', ha='center', va='center', rotation=0, transform= plt.gca().transAxes, fontsize=13)
         plt.colorbar(label='')
         fig = plt.gcf()
         plt.scatter([i_max], [j_max], facecolors='none', edgecolor=(230/255, 46/255, 0), s=1020, marker="s")
 
+        
 
         plt.show()
+        plt.rcdefaults()
         return fig
     def plot_comptime_loadH(N_list,d_list,times):
         fig = plt.figure(figsize=(12, 8))
@@ -891,10 +910,7 @@ class Plotter:
         ax1.set_ylabel(r'Comp. time')
         ax1.set_title(r'$H_{D}+H_{I}$')
         ax1.set_xticks(N_list)
-        # ax1.set_xlim(x_min_d, x_max_d)
-        # ax1.set_ylim(y_min, y_max)
         ax1.grid(which='both', linestyle='--', linewidth=0.5)
-        #ax1.minorticks_on()
         ax1.xaxis.set_minor_locator(ticker.AutoMinorLocator())
         ax1.yaxis.set_minor_locator(ticker.NullLocator())
         
@@ -902,10 +918,7 @@ class Plotter:
         ax2.set_ylabel(r'Comp. time')
         ax2.set_title(r'$H_{D}$')
         ax2.set_xticks(N_list)
-        # ax2.set_xlim(x_min_i, x_max_i)
-        # ax2.set_ylim(y_min,y_max)
         ax2.grid(which='both', linestyle='--', linewidth=0.5)
-        #ax2.minorticks_on()
         ax2.xaxis.set_minor_locator(ticker.AutoMinorLocator())
         ax2.yaxis.set_minor_locator(ticker.NullLocator())
         
@@ -913,10 +926,7 @@ class Plotter:
         ax3.set_ylabel(r'Comp. time')
         ax3.set_title(r'$H_{I}$')
         ax3.set_xticks(N_list)
-        # ax2.set_xlim(x_min_i, x_max_i)
-        # ax2.set_ylim(y_min,y_max)
         ax3.grid(which='both', linestyle='--', linewidth=0.5)
-        #ax3.minorticks_on()
         ax3.xaxis.set_minor_locator(ticker.AutoMinorLocator())
         ax3.yaxis.set_minor_locator(ticker.NullLocator())
         
@@ -945,10 +955,7 @@ class Plotter:
         ax.set_ylabel(r'Comp. time [s]')
         ax.set_title(r'Optimization time')
         ax.set_xticks(N_list)
-        # ax1.set_xlim(x_min_d, x_max_d)
-        # ax1.set_ylim(y_min, y_max)
         ax.grid(which='both', linestyle='--', linewidth=0.5)
-        #ax1.minorticks_on()
         ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
         ax.yaxis.set_minor_locator(ticker.NullLocator())
         
@@ -969,12 +976,8 @@ class Plotter:
         
         ax.set_xlabel(r'$m$')
         ax.set_ylabel(r'${\langle I {\rangle}_f} \, / \, {\langle I {\rangle}_i}$')
-        # ax.set_title(r'Best optimizations')
         ax.set_xticks(N_list)
-        # ax1.set_xlim(x_min_d, x_max_d)
-        # ax1.set_ylim(y_min, y_max)
         ax.grid(which='both', linestyle='--', linewidth=0.5)
-        #ax1.minorticks_on()
         ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
         ax.yaxis.set_minor_locator(ticker.NullLocator())
         
@@ -984,7 +987,6 @@ class Plotter:
             ax.plot(N_list, graph,'--s', markerfacecolor='none',color=colors[i],label=f"d = {d_list[i]}")
             i+=1
         
-        # ax.legend(loc='upper left', frameon=True, shadow=True, fontsize='large')
         plt.show()
         return fig    
     
@@ -1018,9 +1020,7 @@ class Plotter:
             params = next(reader)
             Td = float(params[0])
             Ti = float(params[1])
-            
-            print("Td:",Td*1.055e-34)
-            print("Ti",Ti*1.055e-34)
+
         with open(f"{dir}/heatmap_{N}_{d}.csv", 'r', newline='') as fin:
             reader = csv.reader(fin, delimiter="\t")
             next(reader)
@@ -1032,19 +1032,17 @@ class Plotter:
             i_opt = int(Td/dt_d) -1
             j_opt = int(Ti/dt_i) -1
             
-            infidelities = [[float(inf) for inf in row] for row in reader]            
-            print(len(infidelities),len(infidelities[0]))
-            # infidelities[i_opt][j_opt] = 0.002
+            infidelities = [[float(inf) for inf in row] for row in reader]
             
-            return Plotter.plot_infidelities_heatmap(infidelities,Td_max,Ti_max,dt_d,dt_i,i_opt,j_opt)      
+            return Plotter.plot_infidelities_heatmap(infidelities,Td_max,Ti_max,dt_d,dt_i,i_opt,j_opt,N,d)      
     def load_best(dir,N,d):
         with open(f"{dir}/best_{N}_{d}.csv", 'r',newline="") as fout:
             reader = csv.reader(fout, delimiter="\t")
             params = next(reader)
             Td = float(params[0])
             Ti = float(params[1])
-            dt_d = float(params[2]) * 1.055e-34
-            dt_i = float(params[3]) * 1.055e-34
+            dt_d = float(params[2])
+            dt_i = float(params[3])
             params = next(reader)
             Nd = int(float(params[0]))
             Ni = int(float(params[1]))

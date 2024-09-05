@@ -1,1 +1,1 @@
-"# Quantum-Compilation---Rocca-Patrick-s-thesis" 
+Code written by Patrick Rocca for his bachelor thesis "Compilation of quantum algorithms via imaginary time evolution".
